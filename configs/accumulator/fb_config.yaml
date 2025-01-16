@@ -1,0 +1,472 @@
+experiment_name: v4
+# select campaign type
+comms_flag: "acc" # campaign_type - spend and save: 'ss', accumulator: 'acc',
+package_name: customer_headroom
+
+factory_database: datascienceoffers_analyse_prod
+factory_stg_database: datascienceoffers_analysestg_prod
+lab_database: loyalty_azlab_prod
+sensitivity: p
+
+fixed_stretch: True
+one_article_unit_stretch: True
+category_level: True
+eligible_customers: False
+
+mechanic_type_dict: '{"accumulator": 1, "task": 2, "combo": 3, "streak": 4}'
+ch_fd_dict: '{"gm":1, "fd":2}'
+scope_type_dict: '{"full_basket": 1, "category": 2, "sub_category": 3}'
+
+mechanic: accumulator
+#leave this parameter value as empty for production
+output_qa_prefix: "test_subhash_cat"
+
+# ========================================================================================================
+# TABLE PROPERTIES
+factory_tbl_customer_master: "analytics_trans_prod.customer_master"
+factory_tbl_all_transaction_line: "analytics_trans_prod.all_transaction_line"
+factory_tbl_sparks_account: "analytics_trans_prod.sparks_account"
+factory_tbl_lu_article: "analytics_trans_prod.lu_article"
+factory_tbl_segtco_history: "customer_azbase_prod.segtco_history"
+factory_tbl_omp: "omp_analyse_prod.offer_nsaz_tbl"
+factory_tbl_beanstore: "beanstore_ingest_prod.pos_promotion_set_ns_tbl"
+
+
+debug:
+tables:
+etl_date: 20231127
+lookback_days: 7
+
+tables:
+seg_data_tbl: &seg_data_tbl
+prefix: airflow_final_headroom_segmentation_data
+partitionByList: [ "campaign" ,"l1_id", "category_level"]
+segmentations_tbl: &segmentations_tbl
+prefix: airflow_final_headroom_segmentations
+partitionByList: &segPartition [ "campaign", "l1_id", "category_level","experian_hh_composition", "segmentation" ]
+etl_data_tbl: &etl_data_tbl
+prefix: airflow_final_headroom_etl_data
+partitionByList: *segPartition
+fixed_stretch_etl_data_tbl: &fixed_stretch_etl_data_tbl
+prefix: airflow_final_headroom_fixed_stretch_etl_data
+partitionByList: ["campaign", "l1_id", "category_level"]
+one_article_unit_stretch_etl_data_tbl: &one_article_unit_stretch_etl_data_tbl
+prefix: airflow_final_headroom_one_article_unit_stretch_etl_data
+partitionByList: ["campaign", "l1_id", "category_level"]
+prediction_tbl: &prediction_tbl
+prefix: airflow_final_headroom_predictions
+partitionByList: *segPartition
+fixed_stretch_tbl: &fixed_stretch_tbl
+prefix: airflow_final_headroom_fixed_stretch
+partitionByList: ["campaign", "l1_id", "category_level"]
+one_article_unit_stretch_tbl: &one_article_unit_stretch_tbl
+prefix: airflow_final_headroom_one_article_unit_stretch
+partitionByList: ["campaign", "l1_id", "category_level"]
+headroom_export_tbl: &headroom_export_tbl
+prefix: airflow_final_headroom_allocation
+partitionByList: ["campaign", "l1_id", "category_level", "offer_id"]
+full_export_tbl: &full_export_tbl
+prefix: airflow_final_headroom_test_cells_allocation
+partitionByList: ["campaign", "scope", "mechanic"]
+full_export_selected_tbl: &full_export_selected_tbl
+prefix: airflow_final_headroom_test_cells_selected_allocation
+partitionByList: ["campaign", "scope", "mechanic", "test_accounts"]
+headroom_cust_id_link_tbl: &headroom_cust_id_link_tbl
+prefix: airflow_final_headroom_cust_id_link
+partitionByList: ["campaign", "l1_id", "category_level"]
+offer_variants_tbl: &offer_variants_tbl
+prefix: headroom_accumulator_offer_variants
+partitionByList: ["target"]
+mbr_mission_dtls_tbl: &mbr_mission_dtls_tbl
+prefix: loyalty_mbr_mission_details
+sensitivity: ns
+partitionByList: ["campaign", "mechanic_type_id", "ch_fd_id", "scope_type_id"]
+mbr_mission_product_mapping_tbl: &mbr_mission_product_mapping_tbl
+prefix: loyalty_mbr_mission_product
+sensitivity: ns
+partitionByList: ["campaign", "mechanic_type_id", "ch_fd_id", "scope_type_id"]
+mbr_allocation_post_test_cell_tbl: &mbr_allocation_post_test_cell_tbl
+prefix: loyalty_mbr_allocation_post_test_cell
+partitionByList: ["campaign", "mechanic_type_id", "ch_fd_id", "scope_type_id"]
+mbr_allocation_export_tbl: &mbr_allocation_export_tbl
+prefix: loyalty_mbr_allocation_export
+partitionByList: ["campaign_id", "batch_id"]
+test_accounts_tbl: &test_accounts_tbl
+prefix: headroom_accumulator_test_accounts
+partitionByList: ["campaign"]
+
+mail_containers: # mount paths for different envs
+dev: "centralds"
+ppd: "offers-loyalty-ns"
+prod: "offers-loyalty-ns"
+
+mail_storage_account: #storage account for different envs for email attachments through logic apps
+dev: "dtaeunprodblbsharing01"
+ppd: "dtaeunprodblbfactory01"
+prod: "dtaeunprodblbfactory01"
+
+Email:
+from_email: 'dta.admin@mnscorp.net'
+to_email: ['dapeng.wang@mnscorp.net','parthav.x.maheshwari@mnscorp.net']
+to_email_failed: ['dapeng.wang@mnscorp.net']
+write_mode: "overwrite" # "errorifexists"
+write_table: True
+
+
+directory: &directory dbfs:/mnt/centralds/offerallocation/headroom/prod_reoccurring_run/v0.7/
+prod_input: &prod_input "dbfs:/mnt/centralds/offerallocation/headroom/prod_reoccurring_run/prod_input/"
+# //TODO #25 Can we remove properties in the config.yaml that are not mentioned anywhere?
+verions:
+data: &vdata v0.0.1
+model: &vmodel v0.0.1
+prediction: &vprediction v0.0.1
+
+
+dates:
+# Campaign ID (Internal to Offers)
+#   - Mapping to bullseye ID in headroom_id_mapping_tbl
+# //TODO #24 should upcoming campaign be a job parameter?
+upcoming_campaign: "20250203" #"20241006"
+# End date of timeframe
+etl_date: "today" # 20241006 # "today"  # changed
+# Amount of days to look back
+lookback_days: 363 # 28*13-1
+# TODO: what is this used for?
+lookback_days_registration: 363 # 28*13-1
+# Date format
+date_format: '%Y%m%d'
+date_format_transactions: '%Y-%m-%d'
+# filters:
+columns:
+user_id: &user_id "cust_id"
+item_id: &item_id "l3_id" #change to different lx id and need to the same as lx entry
+l1_ids: &l1_ids "FD"
+# ["FD"]
+# ["GM"]
+lx: &lx "l3" #change to different lx id
+# lx: &lx "l2"
+feature_col: &feature_col "l3_id_total_time_window_spend" # spend and save "l2_id_total_spend_basket" # change for accumulator #weekly_max_basket_percentile' #"85percentile_time_window_max_spend_basket"
+# "mean_spend_timespan"
+# "average_basket_value" "mean_total_spend_basket"
+#"total_spend" #"number_of_transactions"
+# Segmentation columns
+seg_num_cols: &seg_num_cols ["age_to_use", "FD_spend", "GM_spend", "FD_items",  "GM_items", "FD_baskets", "GM_baskets" ]
+seg_cat_cols: &seg_cat_cols ["experian_hh_composition"]
+# "experian_hh_composition", "experian_mosaic_uk_type"
+# ""
+segmentation:
+# input
+# TODO: put this in base of yaml
+l1_id: *l1_ids
+user_id: *user_id
+num_cols: *seg_num_cols
+cat_cols: *seg_cat_cols
+frac_lim: 0.01 # 0.1
+fail_limit: 3
+k_search_min: 5
+k_search_max: 8
+pca_k: 2
+data_lower_lim: 200000
+verbose: True
+# output
+seg_data_tbl: *seg_data_tbl
+segmentations_tbl: *segmentations_tbl
+use_segments:
+all: True
+# seg_list e.g. [{'experian_hh_composition': 'Cat_U', 'segmentation': 1}, ...]
+# seg_list: {}
+segmentations_tbl: *segmentations_tbl
+partitionByList: *segPartition
+build_dataset:
+# input
+segmentations_tbl: *segmentations_tbl
+user_id: *user_id
+l1_ids: *l1_ids
+lx: *lx
+l2_ids: &l2_ids ["EX01", "EX02", "EX03", "EX04", "EX05", "EX07", "EX09"]
+lx_ids: &lx_ids {
+    'meat_fish_poultry': {"l4_id": ["F01C", "F38C", "F62C"]},
+    'fruit_veg_salads': {"l3_id": ["MM07"]},
+}
+window_days: 30
+time_window_days : 28 # spend and save 7, accumulator 4 weeks, so 28 days
+christmas_remove_range: ["1218", "0101"]
+# output
+etl_data_tbl: *etl_data_tbl
+fixed_stretch_etl_data_tbl: *fixed_stretch_etl_data_tbl
+one_article_unit_stretch_etl_data_tbl: *one_article_unit_stretch_etl_data_tbl
+partitionByList: *segPartition
+# aggregation_level: &aggregation_level "lx id" #change to basket or lx id
+aggregation_level: &aggregation_level "lx_id"
+headroom_cust_id_link_tbl: *headroom_cust_id_link_tbl
+fit_rec:
+# input
+etl_data_tbl: *etl_data_tbl
+user_id: *user_id
+item_id: *item_id
+feature_col: *feature_col
+max_train_size: 100000
+n_threads: 5
+lognorm: &lognorm True
+method: &method "SVD"
+line_format: "user item rating"
+rating_scale: (-10, 0)
+min_lim: 0
+max_lim: 500
+cat_cols: *seg_cat_cols
+partitionByList: *segPartition
+params: {'n_factors': 50, 'n_epochs': 30, 'lr_all': 0.01, 'reg_all': 0.1} #None
+#      {'n_factors': 100, 'n_epochs': 20, 'biased': True, 'init_mean': 0, 'init_std_dev': 0.1, 'lr_bu': 0.005,
+#       'lr_bi': 0.005, 'lr_pu': 0.005, 'lr_qi': 0.005, 'reg_bu': 0.02, 'reg_bi': 0.02, 'reg_pu': 0.02,'reg_qi': 0.02}
+param_grid: None # {'n_factors':[50,150],'n_epochs':[20,30],  'lr_all':[0.005,0.01],'reg_all':[0.02,0.1]}
+# param_grid: {'n_factors':[100],'n_epochs':[20,30],  'lr_all':[0.005],'reg_all':[0.1]}
+# params : {'n_factors': 100, 'n_epochs': 20, 'lr_all': 0.005, 'reg_all':0.1}
+# param_grid : None
+# output
+model_tags: {"campaignType": "averageBasketValue", "runType": "recurring"}
+write_mode: overwrite # errorifexists # overwrite
+data_processor_name: &data_processor_name "data_processor"
+param_name: &param_name "data_params"
+rec_name: &rec_name "recommender"
+model_prefix: &model_prefix "airflow_cat_food"
+main_expt_path: "/Shared/mlflow_experiments" # Workspace path
+main_expt_name: "headroom_ray_experiment"
+predict:
+model_prefix: *model_prefix
+# input
+etl_data_tbl: *etl_data_tbl
+fixed_stretch_etl_data_tbl: *fixed_stretch_etl_data_tbl
+one_article_unit_stretch_etl_data_tbl: *one_article_unit_stretch_etl_data_tbl
+data_processor_name: *data_processor_name
+rec_name: *rec_name
+feature_col: *feature_col
+l2_ids: *l2_ids
+pred_key: *lx
+pred_items: *lx_ids
+cat_cols: *seg_cat_cols
+partitionByList: *segPartition
+# output
+prediction_tbl: *prediction_tbl
+offline_eval:
+# input
+etl_data_tbl: *etl_data_tbl
+data_processor_name: *data_processor_name
+method: *method
+# ["svd", "svdpp", "nmf", "knn", "knn_zscore", "knn_mean"]
+methods: ["svd", "svdpp", "nmf"]
+sample: None
+dev_size: 0.1
+test_size: 0.1
+split_col: *user_id
+random_state: 42
+user_key: *user_id
+pred_key: *lx
+pred_items: *lx_ids
+kfold: True
+n_splits: 5
+shuffle: True
+baseline_stretch_simulations:
+rolling_window: 4
+date_col: "date"
+col_to_sum: "sales_amt"
+grouping_columns: ["cust_id", "l3_id"]
+baseline_percentiles: 85
+stretch_amounts: [30] # food category
+percentile_for_one_additional_unit_price: 0.75
+percentile_for_customer_one_additional_unit_price: 0.85
+article_threshold_for_fallback: 10
+article_threshold_for_one_article_unit_stretch: 6
+# output
+fixed_stretch_tbl: *fixed_stretch_tbl
+one_article_unit_stretch_tbl: *one_article_unit_stretch_tbl
+allocation:
+# input
+prediction_tbl: *prediction_tbl
+fixed_stretch_tbl: *fixed_stretch_tbl
+feature_col: *feature_col
+multiple_reward_level_for_test_cell: None
+# TODO: Put this information in a table
+offers_desc: {'16388': "£3 off when you spend £20 on M&S food in store",
+              '14140': "£5 off when you spend £30 on M&S food in store",
+              '14141': "£5 off when you spend £40 on M&S food in store",
+              '14142': "£5 off when you spend £50 on M&S food in store",
+              '14238': "£7 off when you spend £70 on M&S food in store",
+              '14144': "£9 off when you spend £90 on M&S food in store",
+              '14239': "£10 off when you spend £100 on M&S food in store",
+              '14146': "£12 off when you spend £120 on M&S food in store",
+              '14242': "£14 off when you spend £140 on M&S food in store",
+              '14190': "£16 off when you spend £160 on M&S food in store",
+              '14191': "£20 off when you spend £200 on M&S food in store"}
+offer_limits: {'16388': [0,11],
+               '14140': [11,21],
+               '14141': [21,37],
+               '14142': [37,50],
+               '14238': [50,70],
+               '14144': [70,90],
+               '14239': [90,100],
+               '14146': [100,120],
+               '14242': [120,140],
+               '14190': [140,160],
+               '14191': [160,220]}
+offers_desc_top: {'16388': "£3 off when you spend £20 on M&S food in store",
+                  '14140': "£5 off when you spend £30 on M&S food in store",
+                  '14141': "£5 off when you spend £40 on M&S food in store",
+                  '14142': "£5 off when you spend £50 on M&S food in store",
+                  '14238': "£7 off when you spend £70 on M&S food in store",
+                  '14144': "£9 off when you spend £90 on M&S food in store",
+                  '14239': "£10 off when you spend £100 on M&S food in store",
+                  '14146': "£12 off when you spend £120 on M&S food in store",
+                  '14242': "£14 off when you spend £140 on M&S food in store",
+                  '14190': "£16 off when you spend £160 on M&S food in store",
+                  '14191': "£20 off when you spend £200 on M&S food in store"}
+offer_limits_top: {'16388': [0,11],
+                   '14140': [11,21],
+                   '14141': [21,37],
+                   '14142': [37,50],
+                   '14238': [50,70],
+                   '14144': [70,90],
+                   '14239': [90,100],
+                   '14146': [100,120],
+                   '14242': [120,140],
+                   '14190': [140,160],
+                   '14191': [160,220]}
+user_key: *user_id
+lx_key: *lx
+prediction_row_name: "85percentile_time_window_max_spend_basket"
+outlier_min: -0.5
+outlier_max: 200.
+max_increase: 80.
+min_increase: 5.
+prev_not_bought_factor: 0. # 0 means don't use categories that wasn't bought
+prev_not_bought_factor_lx_id_indpendent: 1
+headroom_factor: 1.2
+aggregate_level: *aggregation_level
+fill_offer: 14140
+# Output
+headroom_export_tbl: *headroom_export_tbl
+full_export_tbl: *full_export_tbl
+full_export_selected_tbl: *full_export_selected_tbl
+tcol_allocate_separately : False # False
+exclude_high_spend: None
+min_num_basket: None
+test_cell_selection:
+test_cells: ["one_article_unit_plus_headroom", "one_article_unit_plus_85_stretch_30_perc", "headroom"]
+selection_type: "volume" #can be percentage, volume or random
+treatment_ratio: 0.5
+random: None
+percentage: None
+volume:
+basket:
+fd:
+treatment: {"85_stretch_10_perc_7_perc_reward": 325000,
+            "85_stretch_10_perc_10_perc_reward": 325000,
+            "85_stretch_20_perc_10_perc_reward": 325000,
+            "headroom_10_perc_reward": 325000}
+control: {"85_stretch_10_perc_7_perc_reward": 81250,
+          "85_stretch_10_perc_10_perc_reward": 81250,
+          "85_stretch_20_perc_10_perc_reward": 81250,
+          "headroom_10_perc_reward": 81250}
+lx_id:
+fd:
+treatment: { "one_article_unit_plus_headroom": 125000,
+             "one_article_unit_plus_85_stretch_30_perc": 125000,
+             "headroom": 125000 }
+control: { "one_article_unit_plus_headroom": 125000,
+           "one_article_unit_plus_85_stretch_30_perc": 125000,
+           "headroom": 125000 }
+gm:
+treatment: {"85_stretch_20_perc": 163000,
+            "headroom": 163000 }
+control: {"85_stretch_20_perc": 163000,
+          "headroom": 163000 }
+
+
+# food full basket
+
+sections:
+ss:
+# TODO: Put this information in a table
+offers_desc: {'16388': "£3 off when you spend £20 on M&S food in store",
+              '14140': "£5 off when you spend £30 on M&S food in store",
+              '14141': "£5 off when you spend £40 on M&S food in store",
+              '14142': "£5 off when you spend £50 on M&S food in store",
+              '14238': "£7 off when you spend £70 on M&S food in store",
+              '14144': "£9 off when you spend £90 on M&S food in store",
+              '14239': "£10 off when you spend £100 on M&S food in store",
+              '14146': "£12 off when you spend £120 on M&S food in store",
+              '14242': "£14 off when you spend £140 on M&S food in store",
+              '14190': "£16 off when you spend £160 on M&S food in store",
+              '14191': "£20 off when you spend £200 on M&S food in store"}
+offer_limits: {'16388': [0,11],
+               '14140': [11,21],
+               '14141': [21,37],
+               '14142': [37,50],
+               '14238': [50,70],
+               '14144': [70,90],
+               '14239': [90,100],
+               '14146': [100,120],
+               '14242': [120,140],
+               '14190': [140,160],
+               '14191': [160,220]}
+acc:
+offers_desc_top: {'16437': "£5 off when you spend £30 on M&S food in store",
+                  '16441': "£5 off when you spend £50 on M&S food in store",
+                  '16717': "£7 off when you spend £70 on M&S food in store",
+                  '16445': "£9 off when you spend £90 on M&S food in store",
+                  '16442': "£11 off when you spend £110 on M&S food in store",
+                  '16735': "£13 off when you spend £130 on M&S food in store",
+                  '16719': "£15 off when you spend £150 on M&S food in store",
+                  '16736': "£17 off when you spend £170 on M&S food in store",
+                  '16718': "£19 off when you spend £190 on M&S food in store",
+                  '16716': "£21 off when you spend £210 on M&S food in store",
+                  '16734': "£23 off when you spend £230 on M&S food in store",
+                  '16698': "£25 off when you spend £250 on M&S food in store",
+                  '16699': "£27 off when you spend £270 on M&S food in store",}
+offer_limits_top: {'16437': [0,21],
+                   '16441': [21,50],
+                   '16717': [50,70],
+                   '16445': [70,90],
+                   '16442': [90,110],
+                   '16735': [110,130],
+                   '16719': [130,150],
+                   '16736': [150,170],
+                   '16718': [170,190],
+                   '16716': [190,210],
+                   '16734': [210,230],
+                   '16698': [230, 250],
+                   '16699': [250, 270]}
+offers_desc: {'16437': "£5 off when you spend £30 on M&S food in store",
+              '16441': "£5 off when you spend £50 on M&S food in store",
+              '16717': "£7 off when you spend £70 on M&S food in store",
+              '16445': "£9 off when you spend £90 on M&S food in store",
+              '16442': "£11 off when you spend £110 on M&S food in store",
+              '16735': "£13 off when you spend £130 on M&S food in store",
+              '16719': "£15 off when you spend £150 on M&S food in store",
+              '16736': "£17 off when you spend £170 on M&S food in store",
+              '16718': "£19 off when you spend £190 on M&S food in store",
+              '16716': "£21 off when you spend £210 on M&S food in store",
+              '16734': "£23 off when you spend £230 on M&S food in store",
+              '16698': "£25 off when you spend £250 on M&S food in store",
+              '16699': "£27 off when you spend £270 on M&S food in store",}
+offer_limits: {'16437': [0,21],
+               '16441': [21,50],
+               '16717': [50,70],
+               '16445': [70,90],
+               '16442': [90,110],
+               '16735': [110,130],
+               '16719': [130,150],
+               '16736': [150,170],
+               '16718': [170,190],
+               '16716': [190,210],
+               '16734': [210,230],
+               '16698': [230, 250],
+               '16699': [250, 270]}
+exclude_high_spend: 270
+min_num_basket: 3
+exclude_items: None
+qa:
+num_cust_per_group: 2
+threshold_for_stretch_perc: 100
+threshold_for_estimated_spend: 100
+min_offer_count: 1
+max_offer_count: 1
